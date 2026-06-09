@@ -28,11 +28,6 @@ export default function Header({ onNewBooking }: Props) {
 
         {/* ── Logo + wordmark ── */}
         <div className="flex items-center gap-4 min-w-0">
-          {/* Circular badge */}
-          <div className="shrink-0 w-[72px] h-[72px]">
-            <EvExecBadge />
-          </div>
-
           {/* Text */}
           <div className="min-w-0">
             <h1
