@@ -7,11 +7,12 @@ import {
   addMonths, subMonths,
 } from "date-fns";
 import { ChevronLeft, ChevronRight, Plane, Car } from "lucide-react";
-import type { Booking, CalendarBookingMap } from "@/lib/types";
+import type { DbBooking } from "@/lib/database.types";
+type CalendarBookingMap = Record<string, DbBooking[]>;
 
 interface Props {
   currentMonth: Date;
-  bookings: Booking[];
+  bookings: DbBooking[];
   selectedDate: Date | null;
   onDateSelect: (date: Date) => void;
   onMonthChange: (date: Date) => void;
@@ -35,7 +36,8 @@ export default function CalendarView({
   const bookingMap = useMemo<CalendarBookingMap>(() => {
     const map: CalendarBookingMap = {};
     for (const b of bookings) {
-      const key = b.pickup_datetime.slice(0, 10); // YYYY-MM-DD
+      if (!b.travel_date) continue;
+      const key = b.travel_date.slice(0, 10); // YYYY-MM-DD
       if (!map[key]) map[key] = [];
       map[key].push(b);
     }
@@ -60,10 +62,11 @@ export default function CalendarView({
 
   const monthTotal = bookings
     .filter((b) => {
-      const d = new Date(b.pickup_datetime);
-      return isSameMonth(d, currentMonth) && b.status !== "cancelled";
+      if (!b.travel_date) return false;
+      const d = new Date(b.travel_date);
+      return isSameMonth(d, currentMonth) && b.status !== "Cancelled";
     })
-    .reduce((sum, b) => sum + b.price, 0);
+    .reduce((sum, b) => sum + (b.quoted_price ?? 0), 0);
 
   return (
     <div className="flex flex-col gap-3">
@@ -128,10 +131,10 @@ export default function CalendarView({
           const isTodayDate = isToday(day);
 
           const confirmedCount = dayBookings.filter(
-            (b) => !["pending", "cancelled"].includes(b.status)
+            (b) => !["Unassigned", "Cancelled"].includes(b.status)
           ).length;
           const pendingCount = dayBookings.filter(
-            (b) => b.status === "pending"
+            (b) => b.status === "Unassigned" || b.status === "Unassigned / Missed Call Recovery"
           ).length;
 
           // Pick indicator icon — airport vs city run

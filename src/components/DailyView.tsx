@@ -2,29 +2,26 @@
 
 import { format } from "date-fns";
 import { Calendar } from "lucide-react";
-import type { Booking, BookingStatus, Driver, FlightLog } from "@/lib/types";
+import type { DbBooking, DbDriver, BookingStatus } from "@/lib/database.types";
 import BookingCard from "./BookingCard";
 
 interface Props {
   date: Date;
-  bookings: Booking[];
-  drivers: Driver[];
-  flightLogs: FlightLog[];
-  onStatusChange: (bookingId: string, status: BookingStatus) => void;
-  onDriverAssign: (bookingId: string, driverId: string | null) => void;
+  bookings: DbBooking[];
+  drivers: DbDriver[];
+  onStatusChange: (ref: string, status: BookingStatus) => void;
+  onDriverAssign: (ref: string, driverId: string | null) => void;
 }
 
 export default function DailyView({
   date,
   bookings,
   drivers,
-  flightLogs,
   onStatusChange,
   onDriverAssign,
 }: Props) {
-  const sorted = [...bookings].sort(
-    (a, b) =>
-      new Date(a.pickup_datetime).getTime() - new Date(b.pickup_datetime).getTime()
+  const sorted = [...bookings].sort((a, b) =>
+    (a.travel_time ?? "").localeCompare(b.travel_time ?? "")
   );
 
   return (
@@ -50,10 +47,9 @@ export default function DailyView({
       ) : (
         sorted.map((booking) => (
           <BookingCard
-            key={booking.id}
+            key={booking.ref}
             booking={booking}
             drivers={drivers}
-            flightLog={flightLogs.find((f) => f.booking_id === booking.id)}
             onStatusChange={onStatusChange}
             onDriverAssign={onDriverAssign}
           />

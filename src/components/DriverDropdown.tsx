@@ -2,10 +2,10 @@
 
 import { useState } from "react";
 import { ChevronDown, User } from "lucide-react";
-import type { Driver } from "@/lib/types";
+import type { DbDriver } from "@/lib/database.types";
 
 interface Props {
-  drivers: Driver[];
+  drivers: DbDriver[];
   selectedDriverId: string | null;
   onAssign: (driverId: string | null) => void;
   disabled?: boolean;
@@ -78,7 +78,7 @@ export default function DriverDropdown({
               >
                 <div className="font-medium text-sm">{driver.name}</div>
                 <div className="text-xs text-slate-500 mt-0.5">
-                  {driver.vehicle_details.make} {driver.vehicle_details.model}
+                  {driver.vehicle ?? "—"}{driver.plate ? ` · ${driver.plate}` : ""}
                 </div>
               </button>
             ))}
