@@ -42,7 +42,10 @@ export default function Dashboard() {
     });
     const revenue      = month.reduce((s, b) => s + (b.quoted_price ?? 0), 0);
     const destinations = new Set(month.map((b) => b.dropoff_address).filter(Boolean)).size;
-    return { bookingCount: month.length, totalHours: 0, destinationCount: destinations, revenue };
+    const unassigned   = month.filter((b) =>
+      b.status === "Unassigned" || b.status === "Unassigned / Missed Call Recovery"
+    ).length;
+    return { bookingCount: month.length, unassignedCount: unassigned, destinationCount: destinations, revenue };
   }, [bookings, currentMonth]);
 
   // Upcoming bookings for the transfers tab

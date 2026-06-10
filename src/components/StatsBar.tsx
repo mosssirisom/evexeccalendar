@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarDays, Clock, Navigation, PoundSterling } from "lucide-react";
+import { CalendarDays, UserX, Navigation, PoundSterling } from "lucide-react";
 import type { MonthStats } from "@/lib/types";
 
 interface Props {
@@ -15,9 +15,9 @@ export default function StatsBar({ stats }: Props) {
       label: "Bookings\nThis Month",
     },
     {
-      icon: Clock,
-      value: `${stats.totalHours}h`,
-      label: "Total Hours\nScheduled",
+      icon: UserX,
+      value: stats.unassignedCount.toString(),
+      label: "Unassigned\nBookings",
     },
     {
       icon: Navigation,

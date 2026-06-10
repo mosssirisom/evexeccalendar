@@ -24,9 +24,7 @@ export default function BookingCard({ booking, drivers, onStatusChange, onDriver
   // Build route label
   const from = booking.airport ?? booking.direction ?? "—";
   const to   = booking.dropoff_address ?? "—";
-  const route = booking.direction
-    ? `${from.split(",")[0]} → ${to.split(",")[0]}`
-    : `${from.split(",")[0]} → ${to.split(",")[0]}`;
+  const route = `${from.split(",")[0]} → ${to.split(",")[0]}`;
 
   return (
     <div className="rounded-2xl border border-white/8 bg-navy-800 shadow-card overflow-hidden transition-all hover:border-gold/20">

@@ -2,7 +2,7 @@
 
 export interface MonthStats {
   bookingCount: number;
-  totalHours: number;
+  unassignedCount: number;
   destinationCount: number;
   revenue: number;
 }

@@ -4,6 +4,13 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import type { DbBooking, BookingStatus } from "@/lib/database.types";
 
+// Matches the `EVX-[A-Z0-9]+` ref format used across the EV Exec ecosystem
+// (timestamp + random suffix in base36, uppercased).
+function generateBookingRef(): string {
+  const random = Math.random().toString(36).slice(2, 6).toUpperCase();
+  return `EVX-${Date.now().toString(36).toUpperCase()}${random}`;
+}
+
 export function useBookings() {
   const [bookings, setBookings] = useState<DbBooking[]>([]);
   const [loading, setLoading]   = useState(true);
@@ -115,7 +122,7 @@ export function useBookings() {
 
   const createBooking = useCallback(
     async (data: Omit<DbBooking, "ref" | "created_at" | "updated_at" | "drivers">) => {
-      const ref = crypto.randomUUID();
+      const ref = generateBookingRef();
       const { error: err } = await supabase
         .from("bookings")
         .insert({ ...data, ref });
