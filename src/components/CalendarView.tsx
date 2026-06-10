@@ -1,10 +1,10 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   startOfMonth, endOfMonth, eachDayOfInterval,
   getDay, format, isSameDay, isToday, isSameMonth,
-  addMonths, subMonths,
+  addMonths, subMonths, startOfWeek, endOfWeek, addWeeks, subWeeks,
 } from "date-fns";
 import { ChevronLeft, ChevronRight, Plane, Car } from "lucide-react";
 import type { DbBooking } from "@/lib/database.types";
@@ -18,11 +18,25 @@ interface Props {
   onMonthChange: (date: Date) => void;
 }
 
+type ViewMode = "month" | "week";
+
 const DAYS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
 
 /** Returns 0 (Mon) – 6 (Sun) — ISO weekday convention */
 function isoWeekday(date: Date): number {
   return (getDay(date) + 6) % 7;
+}
+
+/** Splits a day's bookings into active/confirmed/pending, with revenue and an airport flag */
+function classifyBookings(dayBookings: DbBooking[]) {
+  const active = dayBookings.filter((b) => b.status !== "Cancelled");
+  const pending = active.filter(
+    (b) => b.status === "Unassigned" || b.status === "Unassigned / Missed Call Recovery"
+  ).length;
+  const confirmed = active.length - pending;
+  const hasAirport = active.some((b) => b.flight_number !== null);
+  const revenue = active.reduce((sum, b) => sum + (b.quoted_price ?? 0), 0);
+  return { active, confirmed, pending, hasAirport, revenue };
 }
 
 export default function CalendarView({
@@ -32,6 +46,8 @@ export default function CalendarView({
   onDateSelect,
   onMonthChange,
 }: Props) {
+  const [viewMode, setViewMode] = useState<ViewMode>("month");
+
   // Build a map of dateStr → bookings for quick lookup
   const bookingMap = useMemo<CalendarBookingMap>(() => {
     const map: CalendarBookingMap = {};
@@ -75,18 +91,43 @@ export default function CalendarView({
   ).length;
   const onToday = !!selectedDate && format(selectedDate, "yyyy-MM-dd") === todayStr;
 
+  // Week view — the 7-day week containing the selected date (or today)
+  const weekAnchor = selectedDate ?? new Date();
+  const weekStart  = startOfWeek(weekAnchor, { weekStartsOn: 1 });
+  const weekEnd    = endOfWeek(weekAnchor, { weekStartsOn: 1 });
+  const weekDays   = eachDayOfInterval({ start: weekStart, end: weekEnd });
+
+  const weekTotal = weekDays.reduce((sum, day) => {
+    const key = format(day, "yyyy-MM-dd");
+    return sum + classifyBookings(bookingMap[key] ?? []).revenue;
+  }, 0);
+
+  const weekLabel = isSameMonth(weekStart, weekEnd)
+    ? `${format(weekStart, "d")} – ${format(weekEnd, "d MMM yyyy")}`
+    : `${format(weekStart, "d MMM")} – ${format(weekEnd, "d MMM yyyy")}`;
+
+  const goPrev = () =>
+    viewMode === "month"
+      ? onMonthChange(subMonths(currentMonth, 1))
+      : onDateSelect(subWeeks(weekAnchor, 1));
+
+  const goNext = () =>
+    viewMode === "month"
+      ? onMonthChange(addMonths(currentMonth, 1))
+      : onDateSelect(addWeeks(weekAnchor, 1));
+
   return (
     <div className="flex flex-col gap-3">
-      {/* Month header */}
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold text-slate-100">
-            {format(currentMonth, "MMMM yyyy")}
+            {viewMode === "month" ? format(currentMonth, "MMMM yyyy") : weekLabel}
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            Monthly total{" "}
+            {viewMode === "month" ? "Monthly total" : "Weekly total"}{" "}
             <span className="text-gold font-semibold">
-              £{monthTotal.toLocaleString("en-GB", { minimumFractionDigits: 2 })}
+              £{(viewMode === "month" ? monthTotal : weekTotal).toLocaleString("en-GB", { minimumFractionDigits: 2 })}
             </span>
           </p>
         </div>
@@ -108,13 +149,13 @@ export default function CalendarView({
             Today
           </button>
           <button
-            onClick={() => onMonthChange(subMonths(currentMonth, 1))}
+            onClick={goPrev}
             className="p-2 rounded-lg hover:bg-navy-700 text-slate-400 hover:text-slate-200 transition-colors"
           >
             <ChevronLeft size={16} />
           </button>
           <button
-            onClick={() => onMonthChange(addMonths(currentMonth, 1))}
+            onClick={goNext}
             className="p-2 rounded-lg hover:bg-navy-700 text-slate-400 hover:text-slate-200 transition-colors"
           >
             <ChevronRight size={16} />
@@ -122,114 +163,205 @@ export default function CalendarView({
         </div>
       </div>
 
-      {/* Legend */}
-      <div className="flex items-center gap-4 text-xs text-slate-400">
-        <span className="flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full bg-emerald-500" />
-          Confirmed
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full bg-gold" />
-          Pending
-        </span>
-      </div>
-
-      {/* Day headers */}
-      <div className="grid grid-cols-7 text-center">
-        {DAYS.map((d) => (
-          <div key={d} className="text-[10px] font-semibold text-slate-600 py-1">
-            {d}
-          </div>
-        ))}
-      </div>
-
-      {/* Calendar grid */}
-      <div className="grid grid-cols-7 gap-0.5">
-        {cells.map((day, i) => {
-          if (!day) return <div key={`blank-${i}`} />;
-
-          const dateKey     = format(day, "yyyy-MM-dd");
-          const dayBookings = bookingMap[dateKey] ?? [];
-          const isSelected  = selectedDate ? isSameDay(day, selectedDate) : false;
-          const isTodayDate = isToday(day);
-
-          const confirmedCount = dayBookings.filter(
-            (b) => !["Unassigned", "Cancelled"].includes(b.status)
-          ).length;
-          const pendingCount = dayBookings.filter(
-            (b) => b.status === "Unassigned" || b.status === "Unassigned / Missed Call Recovery"
-          ).length;
-
-          // Pick indicator icon — airport vs city run
-          const hasAirport = dayBookings.some(
-            (b) => b.flight_number !== null
-          );
-
-          return (
+      {/* View toggle + legend */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-0.5 p-0.5 rounded-lg bg-navy-800 border border-white/8">
+          {(["month", "week"] as const).map((mode) => (
             <button
-              key={dateKey}
-              onClick={() => onDateSelect(day)}
-              className={`
-                relative flex flex-col items-center justify-start
-                py-2 px-1 rounded-xl transition-all
-                ${isSelected
-                  ? "bg-gold text-navy-900 shadow-gold-md"
-                  : isTodayDate
-                  ? "bg-navy-700 text-slate-100 ring-2 ring-gold/50"
-                  : "text-slate-400 hover:bg-navy-700 hover:text-slate-200"
-                }
-              `}
+              key={mode}
+              onClick={() => setViewMode(mode)}
+              className={`px-3 py-1 rounded-md text-[11px] font-semibold capitalize transition-colors ${
+                viewMode === mode
+                  ? "bg-gold/15 text-gold"
+                  : "text-slate-500 hover:text-slate-300"
+              }`}
             >
-              <span
-                className={`text-sm font-semibold leading-none mb-1.5 ${
-                  isSelected ? "text-navy-900" : ""
+              {mode}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex items-center gap-3 text-xs text-slate-400">
+          <span className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+            Confirmed
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-gold" />
+            Pending
+          </span>
+        </div>
+      </div>
+
+      {viewMode === "month" ? (
+        <>
+          {/* Day headers */}
+          <div className="grid grid-cols-7 text-center">
+            {DAYS.map((d) => (
+              <div key={d} className="text-[10px] font-semibold text-slate-600 py-1">
+                {d}
+              </div>
+            ))}
+          </div>
+
+          {/* Calendar grid */}
+          <div className="grid grid-cols-7 gap-0.5">
+            {cells.map((day, i) => {
+              if (!day) return <div key={`blank-${i}`} />;
+
+              const dateKey     = format(day, "yyyy-MM-dd");
+              const dayBookings = bookingMap[dateKey] ?? [];
+              const isSelected  = selectedDate ? isSameDay(day, selectedDate) : false;
+              const isTodayDate = isToday(day);
+              const { active, confirmed, pending, hasAirport } = classifyBookings(dayBookings);
+
+              return (
+                <button
+                  key={dateKey}
+                  onClick={() => onDateSelect(day)}
+                  className={`
+                    relative flex flex-col items-center justify-start
+                    py-2 px-1 rounded-xl transition-all
+                    ${isSelected
+                      ? "bg-gold text-navy-900 shadow-gold-md"
+                      : isTodayDate
+                      ? "bg-navy-700 text-slate-100 ring-2 ring-gold/50"
+                      : "text-slate-400 hover:bg-navy-700 hover:text-slate-200"
+                    }
+                  `}
+                >
+                  <span
+                    className={`text-sm font-semibold leading-none mb-1.5 ${
+                      isSelected ? "text-navy-900" : ""
+                    }`}
+                  >
+                    {format(day, "d")}
+                  </span>
+
+                  {/* Booking indicators */}
+                  {active.length > 0 && (
+                    <div className="flex flex-col items-center gap-0.5">
+                      {hasAirport ? (
+                        <Plane
+                          size={9}
+                          className={
+                            isSelected ? "text-navy-800" : "text-gold/80"
+                          }
+                        />
+                      ) : (
+                        <Car
+                          size={9}
+                          className={
+                            isSelected ? "text-navy-800" : "text-slate-400"
+                          }
+                        />
+                      )}
+
+                      {/* Dots for confirmed / pending */}
+                      <div className="flex gap-0.5">
+                        {confirmed > 0 && (
+                          <span
+                            className={`w-1 h-1 rounded-full ${
+                              isSelected ? "bg-navy-800" : "bg-emerald-500"
+                            }`}
+                          />
+                        )}
+                        {pending > 0 && (
+                          <span
+                            className={`w-1 h-1 rounded-full ${
+                              isSelected ? "bg-navy-700" : "bg-gold"
+                            }`}
+                          />
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </>
+      ) : (
+        /* Week agenda */
+        <div className="flex flex-col gap-1.5">
+          {weekDays.map((day) => {
+            const dateKey     = format(day, "yyyy-MM-dd");
+            const dayBookings = bookingMap[dateKey] ?? [];
+            const isSelected  = selectedDate ? isSameDay(day, selectedDate) : false;
+            const isTodayDate = isToday(day);
+            const { active, confirmed, pending, hasAirport, revenue } = classifyBookings(dayBookings);
+
+            return (
+              <button
+                key={dateKey}
+                onClick={() => onDateSelect(day)}
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border text-left transition-all ${
+                  isSelected
+                    ? "bg-gold border-gold text-navy-900 shadow-gold-md"
+                    : isTodayDate
+                    ? "bg-navy-700 border-gold/40 ring-2 ring-gold/50 text-slate-100"
+                    : "bg-navy-800 border-white/8 text-slate-300 hover:border-gold/20"
                 }`}
               >
-                {format(day, "d")}
-              </span>
-
-              {/* Booking indicators */}
-              {dayBookings.length > 0 && (
-                <div className="flex flex-col items-center gap-0.5">
-                  {hasAirport ? (
-                    <Plane
-                      size={9}
-                      className={
-                        isSelected ? "text-navy-800" : "text-gold/80"
-                      }
-                    />
-                  ) : (
-                    <Car
-                      size={9}
-                      className={
-                        isSelected ? "text-navy-800" : "text-slate-400"
-                      }
-                    />
-                  )}
-
-                  {/* Dots for confirmed / pending */}
-                  <div className="flex gap-0.5">
-                    {confirmedCount > 0 && (
-                      <span
-                        className={`w-1 h-1 rounded-full ${
-                          isSelected ? "bg-navy-800" : "bg-emerald-500"
-                        }`}
-                      />
-                    )}
-                    {pendingCount > 0 && (
-                      <span
-                        className={`w-1 h-1 rounded-full ${
-                          isSelected ? "bg-navy-700" : "bg-gold"
-                        }`}
-                      />
-                    )}
-                  </div>
+                {/* Date block */}
+                <div className="flex flex-col items-center justify-center w-11 shrink-0">
+                  <span className={`text-[10px] font-semibold uppercase tracking-wide ${
+                    isSelected ? "text-navy-900/70" : "text-slate-500"
+                  }`}>
+                    {format(day, "EEE")}
+                  </span>
+                  <span className={`text-lg font-bold leading-none mt-0.5 ${
+                    isSelected ? "text-navy-900" : "text-slate-100"
+                  }`}>
+                    {format(day, "d")}
+                  </span>
                 </div>
-              )}
-            </button>
-          );
-        })}
-      </div>
+
+                {/* Summary */}
+                <div className="flex-1 min-w-0">
+                  {active.length === 0 ? (
+                    <span className={`text-xs ${isSelected ? "text-navy-900/60" : "text-slate-600"}`}>
+                      No transfers
+                    </span>
+                  ) : (
+                    <div className="flex items-center gap-2.5 flex-wrap">
+                      <span className={`flex items-center gap-1.5 text-xs font-semibold ${
+                        isSelected ? "text-navy-900" : "text-slate-200"
+                      }`}>
+                        {hasAirport ? <Plane size={12} /> : <Car size={12} />}
+                        {active.length} job{active.length !== 1 ? "s" : ""}
+                      </span>
+                      {confirmed > 0 && (
+                        <span className={`flex items-center gap-1 text-[10px] font-medium ${
+                          isSelected ? "text-navy-900/70" : "text-emerald-400"
+                        }`}>
+                          <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                          {confirmed}
+                        </span>
+                      )}
+                      {pending > 0 && (
+                        <span className={`flex items-center gap-1 text-[10px] font-medium ${
+                          isSelected ? "text-navy-900/70" : "text-gold"
+                        }`}>
+                          <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                          {pending}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Revenue */}
+                {revenue > 0 && (
+                  <span className={`text-xs font-bold shrink-0 ${isSelected ? "text-navy-900" : "text-gold"}`}>
+                    £{revenue.toLocaleString("en-GB")}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
