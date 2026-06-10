@@ -36,6 +36,12 @@ export function useBookings() {
     setLoading(false);
   }, []);
 
+  // Keep the revert snapshot in sync with the latest known-good state,
+  // so a failed update doesn't roll back past an earlier successful one.
+  useEffect(() => {
+    prevRef.current = bookings;
+  }, [bookings]);
+
   useEffect(() => {
     fetch();
 
@@ -84,7 +90,9 @@ export function useBookings() {
         setError(err.message);
         // Revert on failure
         setBookings(prevRef.current);
+        return false;
       }
+      return true;
     },
     []
   );
@@ -115,7 +123,9 @@ export function useBookings() {
       if (err) {
         setError(err.message);
         setBookings(prevRef.current);
+        return false;
       }
+      return true;
     },
     []
   );

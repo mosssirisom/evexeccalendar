@@ -6,6 +6,7 @@ import { LayoutList, CalendarDays, Users, ExternalLink, Wifi, WifiOff } from "lu
 import type { DbBooking, BookingStatus } from "@/lib/database.types";
 import { useBookings } from "@/hooks/useBookings";
 import { useDrivers } from "@/hooks/useDrivers";
+import { useToast } from "@/hooks/useToast";
 
 import Header from "@/components/Header";
 import CalendarView from "@/components/CalendarView";
@@ -16,15 +17,26 @@ import StatusBadge from "@/components/StatusBadge";
 
 type Tab = "calendar" | "transfers" | "fleet";
 
+// Minimum gap required between two jobs assigned to the same driver on the
+// same day, to allow for drive time / handover between transfers.
+const CLASH_BUFFER_MINUTES = 90;
+
+function timeToMinutes(time: string | null): number | null {
+  if (!time) return null;
+  const [h, m] = time.split(":").map(Number);
+  if (Number.isNaN(h) || Number.isNaN(m)) return null;
+  return h * 60 + m;
+}
+
 export default function Dashboard() {
   const { bookings, loading, error, updateStatus, assignDriver, createBooking } = useBookings();
   const { drivers } = useDrivers();
+  const { showToast } = useToast();
 
   const [currentMonth, setMonth]  = useState<Date>(new Date());
   const [selectedDate, setDate]   = useState<Date | null>(new Date());
   const [activeTab, setTab]       = useState<Tab>("calendar");
   const [showAddModal, setAdd]    = useState(false);
-  const [clashWarning, setClash]  = useState<string | null>(null);
 
   // Bookings for the selected day
   const dayBookings = useMemo(() => {
@@ -60,34 +72,49 @@ export default function Dashboard() {
       });
   }, [bookings]);
 
-  const handleStatusChange = (ref: string, status: BookingStatus) => {
-    updateStatus(ref, status);
+  const handleStatusChange = async (ref: string, status: BookingStatus) => {
+    const ok = await updateStatus(ref, status);
+    if (!ok) showToast("Couldn't update status — check connection and try again", "error");
   };
 
-  const handleDriverAssign = (ref: string, driverId: string | null) => {
-    // Check for clash among active bookings for that driver
+  const handleDriverAssign = async (ref: string, driverId: string | null) => {
+    // Check for a time clash among this driver's active bookings that day,
+    // allowing for a buffer between back-to-back jobs.
     if (driverId) {
       const booking = bookings.find((b) => b.ref === ref);
-      if (booking?.travel_date && booking.travel_time) {
-        const clash = bookings.find(
-          (b) =>
-            b.ref !== ref &&
-            b.driver_id === driverId &&
-            b.travel_date === booking.travel_date &&
-            !["Completed", "Cancelled"].includes(b.status)
-        );
+      if (booking?.travel_date) {
+        const bookingMinutes = timeToMinutes(booking.travel_time);
+        const clash = bookings.find((b) => {
+          if (b.ref === ref) return false;
+          if (b.driver_id !== driverId) return false;
+          if (b.travel_date !== booking.travel_date) return false;
+          if (["Completed", "Cancelled"].includes(b.status)) return false;
+          const otherMinutes = timeToMinutes(b.travel_time);
+          if (bookingMinutes == null || otherMinutes == null) return true;
+          return Math.abs(otherMinutes - bookingMinutes) < CLASH_BUFFER_MINUTES;
+        });
         if (clash) {
-          setClash(`Driver already has a job on ${clash.travel_date} at ${clash.travel_time?.slice(0, 5)}`);
-          setTimeout(() => setClash(null), 4000);
+          const clashTime = clash.travel_time?.slice(0, 5) ?? "an unscheduled time";
+          showToast(
+            `Clash: driver already has a job at ${clashTime} on ${clash.travel_date} (within ${CLASH_BUFFER_MINUTES}-min buffer)`,
+            "warning"
+          );
           return;
         }
       }
     }
-    assignDriver(ref, driverId);
+    const ok = await assignDriver(ref, driverId);
+    if (!ok) showToast("Couldn't update driver assignment — check connection and try again", "error");
   };
 
   const handleAddBooking = async (data: Omit<DbBooking, "ref" | "created_at" | "updated_at" | "drivers">) => {
-    await createBooking(data);
+    try {
+      const ref = await createBooking(data);
+      showToast(`Booking ${ref} created`, "success");
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Failed to create booking", "error");
+      return;
+    }
     setAdd(false);
     if (data.travel_date) {
       const d = parseISO(data.travel_date);
@@ -142,13 +169,6 @@ export default function Dashboard() {
           ))}
         </nav>
       </div>
-
-      {/* Clash warning */}
-      {clashWarning && (
-        <div className="mx-4 mt-3 px-4 py-2.5 rounded-xl bg-red-900/60 border border-red-500/30 text-sm text-red-300 fade-in">
-          ⚠ {clashWarning}
-        </div>
-      )}
 
       {/* Loading skeleton */}
       {loading && (

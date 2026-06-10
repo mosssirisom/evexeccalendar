@@ -68,6 +68,13 @@ export default function CalendarView({
     })
     .reduce((sum, b) => sum + (b.quoted_price ?? 0), 0);
 
+  // Today strip — surfaces today's job count regardless of which month/day is selected
+  const todayStr   = format(new Date(), "yyyy-MM-dd");
+  const todayCount = bookings.filter(
+    (b) => b.travel_date === todayStr && b.status !== "Cancelled"
+  ).length;
+  const onToday = !!selectedDate && format(selectedDate, "yyyy-MM-dd") === todayStr;
+
   return (
     <div className="flex flex-col gap-3">
       {/* Month header */}
@@ -84,6 +91,22 @@ export default function CalendarView({
           </p>
         </div>
         <div className="flex items-center gap-1">
+          {todayCount > 0 && (
+            <span className="hidden sm:inline-flex items-center gap-1 mr-1 px-2 py-1 rounded-full text-[10px] font-semibold text-gold bg-gold/10 border border-gold/20">
+              {todayCount} today
+            </span>
+          )}
+          <button
+            onClick={() => onDateSelect(new Date())}
+            disabled={onToday}
+            className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
+              onToday
+                ? "text-slate-600 border-white/5 cursor-default"
+                : "text-gold border-gold/25 hover:bg-gold/10"
+            }`}
+          >
+            Today
+          </button>
           <button
             onClick={() => onMonthChange(subMonths(currentMonth, 1))}
             className="p-2 rounded-lg hover:bg-navy-700 text-slate-400 hover:text-slate-200 transition-colors"
@@ -152,7 +175,7 @@ export default function CalendarView({
                 ${isSelected
                   ? "bg-gold text-navy-900 shadow-gold-md"
                   : isTodayDate
-                  ? "bg-navy-700 text-slate-100 ring-1 ring-gold/40"
+                  ? "bg-navy-700 text-slate-100 ring-2 ring-gold/50"
                   : "text-slate-400 hover:bg-navy-700 hover:text-slate-200"
                 }
               `}
