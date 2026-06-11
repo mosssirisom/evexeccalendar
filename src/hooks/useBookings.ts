@@ -131,7 +131,7 @@ export function useBookings() {
   );
 
   const createBooking = useCallback(
-    async (data: Omit<DbBooking, "ref" | "created_at" | "updated_at" | "drivers">) => {
+    async (data: Omit<DbBooking, "id" | "ref" | "created_at" | "updated_at" | "drivers">) => {
       const ref = generateBookingRef();
       const { error: err } = await supabase
         .from("bookings")

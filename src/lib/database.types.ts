@@ -12,6 +12,7 @@ export type BookingStatus =
 export type PaymentStatus = "Unpaid" | "Paid" | "Invoiced";
 
 export interface DbBooking {
+  id: string;
   ref: string;
   customer_name: string;
   customer_phone: string | null;
@@ -55,13 +56,47 @@ export interface DbMissedCall {
   resolved: boolean;
 }
 
+// Booking Brain intake — submitted via the public site, triaged here
+export interface DbQuoteRequest {
+  id: string;
+  customer_name: string;
+  phone: string;
+  email: string | null;
+  pickup_location: string | null;
+  destination: string | null;
+  pickup_date: string | null; // "YYYY-MM-DD"
+  pickup_time: string | null;
+  passengers: number | null;
+  luggage: string | null;
+  return_required: boolean | null;
+  return_date: string | null;
+  return_time: string | null;
+  return_pickup: string | null;
+  return_destination: string | null;
+  return_airport: string | null;
+  return_flight_number: string | null;
+  journey_type: string | null;
+  airport: string | null;
+  flight_number: string | null;
+  contact_method: string | null;
+  notes: string | null;
+  status: string | null; // "new" | "converted" | "dismissed"
+  created_at: string | null;
+}
+
+export const QUOTE_REQUEST_STATUS = {
+  NEW: "new",
+  CONVERTED: "converted",
+  DISMISSED: "dismissed",
+} as const;
+
 // Supabase database shape for createClient<Database>
 export interface Database {
   public: {
     Tables: {
       bookings: {
         Row: DbBooking;
-        Insert: Omit<DbBooking, "created_at" | "updated_at" | "drivers">;
+        Insert: Omit<DbBooking, "id" | "created_at" | "updated_at" | "drivers">;
         Update: Partial<Omit<DbBooking, "ref" | "created_at" | "drivers">>;
       };
       drivers: {
@@ -73,6 +108,11 @@ export interface Database {
         Row: DbMissedCall;
         Insert: Omit<DbMissedCall, "id" | "created_at">;
         Update: Partial<DbMissedCall>;
+      };
+      quote_requests: {
+        Row: DbQuoteRequest;
+        Insert: Omit<DbQuoteRequest, "id" | "created_at">;
+        Update: Partial<DbQuoteRequest>;
       };
     };
     Views: Record<string, never>;

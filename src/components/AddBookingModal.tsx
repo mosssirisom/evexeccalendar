@@ -5,11 +5,27 @@ import { X, Plane, MapPin, Users, Calendar, type LucideIcon } from "lucide-react
 import { format } from "date-fns";
 import type { DbBooking, DbDriver } from "@/lib/database.types";
 
-type NewBooking = Omit<DbBooking, "ref" | "created_at" | "updated_at" | "drivers">;
+type NewBooking = Omit<DbBooking, "id" | "ref" | "created_at" | "updated_at" | "drivers">;
+
+// Optional pre-fill values, used when converting a Booking Brain quote
+// request into a confirmed booking. Only the fields present are overridden.
+export interface BookingPrefill {
+  customer_name?: string;
+  customer_phone?: string;
+  customer_email?: string;
+  travel_date?: string;
+  travel_time?: string;
+  airport?: string;
+  dropoff_address?: string;
+  direction?: string;
+  flight_number?: string;
+  notes?: string;
+}
 
 interface Props {
   drivers: DbDriver[];
   defaultDate?: Date;
+  prefill?: BookingPrefill;
   onSave: (data: NewBooking) => Promise<void>;
   onClose: () => void;
 }
@@ -20,24 +36,24 @@ const DIRECTIONS = [
   "Point to Point",
 ];
 
-export default function AddBookingModal({ drivers, defaultDate, onSave, onClose }: Props) {
+export default function AddBookingModal({ drivers, defaultDate, prefill, onSave, onClose }: Props) {
   const today   = defaultDate ?? new Date();
   const dateStr = format(today, "yyyy-MM-dd");
 
   const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState({
-    travel_date:       dateStr,
-    travel_time:       "09:00",
-    customer_name:     "",
-    customer_phone:    "",
-    customer_email:    "",
-    airport:           "",
-    dropoff_address:   "",
-    direction:         DIRECTIONS[0],
-    flight_number:     "",
+    travel_date:       prefill?.travel_date ?? dateStr,
+    travel_time:       prefill?.travel_time ?? "09:00",
+    customer_name:     prefill?.customer_name ?? "",
+    customer_phone:    prefill?.customer_phone ?? "",
+    customer_email:    prefill?.customer_email ?? "",
+    airport:           prefill?.airport ?? "",
+    dropoff_address:   prefill?.dropoff_address ?? "",
+    direction:         prefill?.direction ?? DIRECTIONS[0],
+    flight_number:     prefill?.flight_number ?? "",
     driver_id:         "",
     quoted_price:      "",
-    notes:             "",
+    notes:             prefill?.notes ?? "",
     priority:          false,
   });
 
@@ -87,6 +103,12 @@ export default function AddBookingModal({ drivers, defaultDate, onSave, onClose 
             <X size={16} />
           </button>
         </div>
+
+        {prefill && (
+          <div className="mx-5 mt-4 px-3 py-2 rounded-lg bg-gold/10 border border-gold/20 text-xs text-gold">
+            Pre-filled from quote request — review before creating
+          </div>
+        )}
 
         <div className="px-5 py-4 space-y-4">
           {/* Date & Time */}

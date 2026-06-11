@@ -2,20 +2,24 @@
 
 import { useState, useMemo } from "react";
 import { parseISO, isSameDay, isSameMonth } from "date-fns";
-import { LayoutList, CalendarDays, Users, ExternalLink, Wifi, WifiOff } from "lucide-react";
-import type { DbBooking, BookingStatus } from "@/lib/database.types";
+import { LayoutList, CalendarDays, Users, ExternalLink, Wifi, WifiOff, Inbox } from "lucide-react";
+import type { DbBooking, BookingStatus, DbQuoteRequest } from "@/lib/database.types";
+import { QUOTE_REQUEST_STATUS } from "@/lib/database.types";
 import { useBookings } from "@/hooks/useBookings";
 import { useDrivers } from "@/hooks/useDrivers";
+import { useQuoteRequests } from "@/hooks/useQuoteRequests";
+import { useMissedCalls } from "@/hooks/useMissedCalls";
 import { useToast } from "@/hooks/useToast";
 
 import Header from "@/components/Header";
 import CalendarView from "@/components/CalendarView";
 import DailyView from "@/components/DailyView";
 import StatsBar from "@/components/StatsBar";
-import AddBookingModal from "@/components/AddBookingModal";
+import AddBookingModal, { type BookingPrefill } from "@/components/AddBookingModal";
 import StatusBadge from "@/components/StatusBadge";
+import InboxTab from "@/components/InboxTab";
 
-type Tab = "calendar" | "transfers" | "fleet";
+type Tab = "calendar" | "transfers" | "fleet" | "inbox";
 
 // Minimum gap required between two jobs assigned to the same driver on the
 // same day, to allow for drive time / handover between transfers.
@@ -28,15 +32,64 @@ function timeToMinutes(time: string | null): number | null {
   return h * 60 + m;
 }
 
+// Maps a Booking Brain quote request onto the New Transfer form fields.
+// Anything without a direct field on the booking (passengers, luggage,
+// return trip, contact method) is folded into the notes for the operator
+// to review.
+function quoteToPrefill(quote: DbQuoteRequest): BookingPrefill {
+  const pickup = quote.airport ?? quote.pickup_location ?? undefined;
+
+  const noteParts: string[] = [];
+  if (quote.passengers) noteParts.push(`${quote.passengers} passenger${quote.passengers !== 1 ? "s" : ""}`);
+  if (quote.luggage) noteParts.push(`Luggage: ${quote.luggage}`);
+  if (quote.return_required) {
+    const parts = ["Return trip requested"];
+    if (quote.return_date) parts.push(`on ${quote.return_date}`);
+    if (quote.return_time) parts.push(`at ${quote.return_time.slice(0, 5)}`);
+    if (quote.return_pickup) parts.push(`from ${quote.return_pickup}`);
+    if (quote.return_destination) parts.push(`to ${quote.return_destination}`);
+    if (quote.return_airport) parts.push(`(airport: ${quote.return_airport})`);
+    if (quote.return_flight_number) parts.push(`flight ${quote.return_flight_number}`);
+    noteParts.push(parts.join(" "));
+  }
+  if (quote.contact_method) noteParts.push(`Contact via ${quote.contact_method}`);
+  if (quote.notes) noteParts.push(quote.notes);
+
+  const prefill: BookingPrefill = {
+    customer_name: quote.customer_name,
+    customer_phone: quote.phone,
+    direction: quote.airport ? "Airport → Destination" : "Point to Point",
+  };
+  if (quote.email) prefill.customer_email = quote.email;
+  if (quote.pickup_date) prefill.travel_date = quote.pickup_date;
+  if (quote.pickup_time) prefill.travel_time = quote.pickup_time.slice(0, 5);
+  if (pickup) prefill.airport = pickup;
+  if (quote.destination) prefill.dropoff_address = quote.destination;
+  if (quote.flight_number) prefill.flight_number = quote.flight_number;
+  if (noteParts.length) prefill.notes = noteParts.join(" · ");
+
+  return prefill;
+}
+
 export default function Dashboard() {
   const { bookings, loading, error, updateStatus, assignDriver, createBooking } = useBookings();
   const { drivers } = useDrivers();
+  const { quoteRequests, setStatus: setQuoteStatus } = useQuoteRequests();
+  const { missedCalls, setResolved: setMissedCallResolved } = useMissedCalls();
   const { showToast } = useToast();
 
   const [currentMonth, setMonth]  = useState<Date>(new Date());
   const [selectedDate, setDate]   = useState<Date | null>(new Date());
   const [activeTab, setTab]       = useState<Tab>("calendar");
   const [showAddModal, setAdd]    = useState(false);
+  const [quotePrefill, setQuotePrefill] = useState<{ prefill: BookingPrefill; quoteId: string } | null>(null);
+
+  // Badge count for the Inbox tab — new quote requests + unresolved missed calls
+  const inboxCount = useMemo(() => {
+    const newQuotes = quoteRequests.filter((q) => !q.status || q.status === "new").length;
+    const unresolvedCalls = missedCalls.filter((c) => !c.resolved).length;
+    return newQuotes + unresolvedCalls;
+  }, [quoteRequests, missedCalls]);
 
   // Bookings for the selected day
   const dayBookings = useMemo(() => {
@@ -107,13 +160,17 @@ export default function Dashboard() {
     if (!ok) showToast("Couldn't update driver assignment — check connection and try again", "error");
   };
 
-  const handleAddBooking = async (data: Omit<DbBooking, "ref" | "created_at" | "updated_at" | "drivers">) => {
+  const handleAddBooking = async (data: Omit<DbBooking, "id" | "ref" | "created_at" | "updated_at" | "drivers">) => {
     try {
       const ref = await createBooking(data);
       showToast(`Booking ${ref} created`, "success");
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Failed to create booking", "error");
       return;
+    }
+    if (quotePrefill) {
+      await setQuoteStatus(quotePrefill.quoteId, QUOTE_REQUEST_STATUS.CONVERTED);
+      setQuotePrefill(null);
     }
     setAdd(false);
     if (data.travel_date) {
@@ -122,6 +179,21 @@ export default function Dashboard() {
       setDate(d);
       setTab("calendar");
     }
+  };
+
+  const handleDismissQuote = async (id: string) => {
+    const ok = await setQuoteStatus(id, QUOTE_REQUEST_STATUS.DISMISSED);
+    if (!ok) showToast("Couldn't dismiss quote — check connection and try again", "error");
+  };
+
+  const handleConvertQuote = (quote: DbQuoteRequest) => {
+    setQuotePrefill({ prefill: quoteToPrefill(quote), quoteId: quote.id });
+    setAdd(true);
+  };
+
+  const handleToggleMissedCall = async (id: string, resolved: boolean) => {
+    const ok = await setMissedCallResolved(id, resolved);
+    if (!ok) showToast("Couldn't update missed call — check connection and try again", "error");
   };
 
   return (
@@ -151,6 +223,7 @@ export default function Dashboard() {
             [
               { id: "calendar",  label: "Calendar",  icon: CalendarDays },
               { id: "transfers", label: "Transfers",  icon: LayoutList },
+              { id: "inbox",     label: "Inbox",      icon: Inbox },
               { id: "fleet",     label: "Fleet",      icon: Users },
             ] as const
           ).map(({ id, label, icon: Icon }) => (
@@ -165,6 +238,11 @@ export default function Dashboard() {
             >
               <Icon size={12} />
               {label}
+              {id === "inbox" && inboxCount > 0 && (
+                <span className="flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full bg-orange-500 text-[10px] font-bold text-white">
+                  {inboxCount}
+                </span>
+              )}
             </button>
           ))}
         </nav>
@@ -260,6 +338,17 @@ export default function Dashboard() {
               </div>
             )}
 
+            {/* ── INBOX TAB ── */}
+            {activeTab === "inbox" && (
+              <InboxTab
+                quoteRequests={quoteRequests}
+                missedCalls={missedCalls}
+                onDismissQuote={handleDismissQuote}
+                onConvertQuote={handleConvertQuote}
+                onToggleMissedCall={handleToggleMissedCall}
+              />
+            )}
+
             {/* ── FLEET TAB ── */}
             {activeTab === "fleet" && (
               <div className="space-y-3">
@@ -341,8 +430,12 @@ export default function Dashboard() {
         <AddBookingModal
           drivers={drivers}
           defaultDate={selectedDate ?? new Date()}
+          prefill={quotePrefill?.prefill}
           onSave={handleAddBooking}
-          onClose={() => setAdd(false)}
+          onClose={() => {
+            setAdd(false);
+            setQuotePrefill(null);
+          }}
         />
       )}
     </div>
