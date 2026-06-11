@@ -13,6 +13,7 @@ import { useContactMessages } from "@/hooks/useContactMessages";
 import { useNotifications } from "@/hooks/useNotifications";
 import { useDriverAvailability } from "@/hooks/useDriverAvailability";
 import { useToast } from "@/hooks/useToast";
+import { useAuth } from "@/hooks/useAuth";
 
 import Header from "@/components/Header";
 import CalendarView from "@/components/CalendarView";
@@ -21,6 +22,7 @@ import StatsBar from "@/components/StatsBar";
 import AddBookingModal, { type BookingPrefill } from "@/components/AddBookingModal";
 import StatusBadge from "@/components/StatusBadge";
 import InboxTab from "@/components/InboxTab";
+import LoginScreen from "@/components/LoginScreen";
 
 type Tab = "calendar" | "transfers" | "fleet" | "inbox";
 
@@ -74,7 +76,26 @@ function quoteToPrefill(quote: DbQuoteRequest): BookingPrefill {
   return prefill;
 }
 
-export default function Dashboard() {
+export default function Page() {
+  const { session, loading: authLoading, signIn, signOut } = useAuth();
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-navy-900 flex items-center justify-center text-slate-600 text-sm gap-2">
+        <span className="w-4 h-4 rounded-full border-2 border-gold/30 border-t-gold animate-spin" />
+        Loading…
+      </div>
+    );
+  }
+
+  if (!session) {
+    return <LoginScreen onSignIn={signIn} />;
+  }
+
+  return <Dashboard onSignOut={signOut} />;
+}
+
+function Dashboard({ onSignOut }: { onSignOut: () => void }) {
   const { bookings, loading, error, updateStatus, assignDriver, createBooking } = useBookings();
   const { drivers } = useDrivers();
   const { quoteRequests, setStatus: setQuoteStatus } = useQuoteRequests();
@@ -217,7 +238,7 @@ export default function Dashboard() {
     <div className="min-h-screen bg-navy-900 flex flex-col">
       {/* Header */}
       <div className="relative z-30 bg-navy-900 border-b border-white/5">
-        <Header onNewBooking={() => setAdd(true)} />
+        <Header onNewBooking={() => setAdd(true)} onSignOut={onSignOut} />
 
         {/* Live sync indicator */}
         <div className="flex items-center gap-1.5 px-4 py-1.5 border-b border-white/5">

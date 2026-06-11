@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, ExternalLink, Menu, X } from "lucide-react";
+import { Plus, ExternalLink, Menu, X, LogOut } from "lucide-react";
 
 interface Props {
   onNewBooking: () => void;
+  onSignOut: () => void;
 }
 
 const ECOSYSTEM_LINKS = [
@@ -13,7 +14,7 @@ const ECOSYSTEM_LINKS = [
   { label: "Operator Portal", href: "https://evexecoperator.vercel.app",        abbr: "Operator" },
 ];
 
-export default function Header({ onNewBooking }: Props) {
+export default function Header({ onNewBooking, onSignOut }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
 
   return (
@@ -76,6 +77,16 @@ export default function Header({ onNewBooking }: Props) {
             <Plus size={18} strokeWidth={3} />
           </button>
 
+          {/* Sign out — desktop */}
+          <button
+            onClick={onSignOut}
+            className="hidden md:flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs text-slate-500 hover:text-red-400 hover:bg-white/5 transition-colors"
+            aria-label="Sign out"
+          >
+            <LogOut size={12} />
+            Sign out
+          </button>
+
           {/* Mobile menu toggle */}
           <button
             onClick={() => setMenuOpen((o) => !o)}
@@ -102,6 +113,16 @@ export default function Header({ onNewBooking }: Props) {
               <ExternalLink size={12} />
             </a>
           ))}
+          <button
+            onClick={() => {
+              setMenuOpen(false);
+              onSignOut();
+            }}
+            className="flex items-center justify-between w-full px-4 py-3 text-sm text-slate-300 hover:bg-navy-700 hover:text-red-400 transition-colors border-t border-white/5"
+          >
+            Sign out
+            <LogOut size={12} />
+          </button>
         </div>
       )}
     </header>
