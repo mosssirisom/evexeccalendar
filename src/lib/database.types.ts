@@ -90,6 +90,15 @@ export const QUOTE_REQUEST_STATUS = {
   DISMISSED: "dismissed",
 } as const;
 
+// Driver-reported leave/unavailability — set via the driver app, read here
+// for dispatch so unavailable drivers aren't assigned to a job that day.
+export interface DbDriverUnavailableDate {
+  id: string;
+  driver_id: string;
+  date: string; // "YYYY-MM-DD"
+  created_at: string | null;
+}
+
 // Read-only views exposing notification status without recipient PII or
 // message content — see migration dashboard_anon_notification_status_views.
 export interface DbNotificationLog {
@@ -137,6 +146,11 @@ export interface Database {
         Row: DbQuoteRequest;
         Insert: Omit<DbQuoteRequest, "id" | "created_at">;
         Update: Partial<DbQuoteRequest>;
+      };
+      driver_unavailable_dates: {
+        Row: DbDriverUnavailableDate;
+        Insert: Omit<DbDriverUnavailableDate, "id" | "created_at">;
+        Update: Partial<DbDriverUnavailableDate>;
       };
     };
     Views: {

@@ -19,11 +19,12 @@ interface Props {
   booking: DbBooking;
   drivers: DbDriver[];
   notification?: BookingNotificationStatus;
+  unavailableDriverIds?: Set<string>;
   onStatusChange: (ref: string, status: BookingStatus) => void;
   onDriverAssign:  (ref: string, driverId: string | null) => void;
 }
 
-export default function BookingCard({ booking, drivers, notification, onStatusChange, onDriverAssign }: Props) {
+export default function BookingCard({ booking, drivers, notification, unavailableDriverIds, onStatusChange, onDriverAssign }: Props) {
   const [expanded, setExpanded] = useState(false);
 
   const time      = booking.travel_time?.slice(0, 5) ?? "—";
@@ -92,9 +93,15 @@ export default function BookingCard({ booking, drivers, notification, onStatusCh
           <DriverDropdown
             drivers={drivers}
             selectedDriverId={booking.driver_id}
+            unavailableDriverIds={unavailableDriverIds}
             onAssign={(id) => onDriverAssign(booking.ref, id)}
             disabled={booking.status === "Completed" || booking.status === "Cancelled"}
           />
+          {booking.driver_id && unavailableDriverIds?.has(booking.driver_id) && (
+            <span className="flex items-center gap-1 text-[10px] font-bold text-red-400" title="Driver has marked this day unavailable">
+              <AlertTriangle size={11} /> Unavailable
+            </span>
+          )}
         </div>
 
         {/* Expand toggle */}

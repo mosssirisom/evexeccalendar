@@ -7,6 +7,7 @@ import type { DbDriver } from "@/lib/database.types";
 interface Props {
   drivers: DbDriver[];
   selectedDriverId: string | null;
+  unavailableDriverIds?: Set<string>;
   onAssign: (driverId: string | null) => void;
   disabled?: boolean;
 }
@@ -14,6 +15,7 @@ interface Props {
 export default function DriverDropdown({
   drivers,
   selectedDriverId,
+  unavailableDriverIds,
   onAssign,
   disabled = false,
 }: Props) {
@@ -64,24 +66,34 @@ export default function DriverDropdown({
             </button>
             <div className="h-px bg-white/5 mx-3" />
 
-            {drivers.map((driver) => (
-              <button
-                key={driver.id}
-                onClick={() => { onAssign(driver.id); setOpen(false); }}
-                className={`
-                  w-full text-left px-4 py-2.5 transition-colors
-                  ${driver.id === selectedDriverId
-                    ? "bg-gold/10 text-gold"
-                    : "text-slate-200 hover:bg-navy-700"
-                  }
-                `}
-              >
-                <div className="font-medium text-sm">{driver.name}</div>
-                <div className="text-xs text-slate-500 mt-0.5">
-                  {driver.vehicle ?? "—"}{driver.plate ? ` · ${driver.plate}` : ""}
-                </div>
-              </button>
-            ))}
+            {drivers.map((driver) => {
+              const unavailable = unavailableDriverIds?.has(driver.id) ?? false;
+              return (
+                <button
+                  key={driver.id}
+                  onClick={() => { onAssign(driver.id); setOpen(false); }}
+                  className={`
+                    w-full text-left px-4 py-2.5 transition-colors
+                    ${driver.id === selectedDriverId
+                      ? "bg-gold/10 text-gold"
+                      : "text-slate-200 hover:bg-navy-700"
+                    }
+                  `}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-medium text-sm">{driver.name}</span>
+                    {unavailable && (
+                      <span className="text-[10px] font-bold text-red-400 bg-red-900/30 px-1.5 py-0.5 rounded-full">
+                        Off this day
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-xs text-slate-500 mt-0.5">
+                    {driver.vehicle ?? "—"}{driver.plate ? ` · ${driver.plate}` : ""}
+                  </div>
+                </button>
+              );
+            })}
           </div>
         </>
       )}

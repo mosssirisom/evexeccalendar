@@ -11,6 +11,7 @@ interface Props {
   bookings: DbBooking[];
   drivers: DbDriver[];
   notifications: Record<string, BookingNotificationStatus>;
+  unavailableDriverIds: Set<string>;
   onStatusChange: (ref: string, status: BookingStatus) => void;
   onDriverAssign: (ref: string, driverId: string | null) => void;
 }
@@ -20,6 +21,7 @@ export default function DailyView({
   bookings,
   drivers,
   notifications,
+  unavailableDriverIds,
   onStatusChange,
   onDriverAssign,
 }: Props) {
@@ -54,6 +56,7 @@ export default function DailyView({
             booking={booking}
             drivers={drivers}
             notification={notifications[booking.id]}
+            unavailableDriverIds={unavailableDriverIds}
             onStatusChange={onStatusChange}
             onDriverAssign={onDriverAssign}
           />

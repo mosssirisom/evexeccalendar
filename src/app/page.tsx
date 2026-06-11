@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { parseISO, isSameDay, isSameMonth } from "date-fns";
+import { format, parseISO, isSameDay, isSameMonth } from "date-fns";
 import { LayoutList, CalendarDays, Users, ExternalLink, Wifi, WifiOff, Inbox } from "lucide-react";
 import type { DbBooking, BookingStatus, DbQuoteRequest } from "@/lib/database.types";
 import { QUOTE_REQUEST_STATUS } from "@/lib/database.types";
@@ -10,6 +10,7 @@ import { useDrivers } from "@/hooks/useDrivers";
 import { useQuoteRequests } from "@/hooks/useQuoteRequests";
 import { useMissedCalls } from "@/hooks/useMissedCalls";
 import { useNotifications } from "@/hooks/useNotifications";
+import { useDriverAvailability } from "@/hooks/useDriverAvailability";
 import { useToast } from "@/hooks/useToast";
 
 import Header from "@/components/Header";
@@ -78,6 +79,7 @@ export default function Dashboard() {
   const { quoteRequests, setStatus: setQuoteStatus } = useQuoteRequests();
   const { missedCalls, setResolved: setMissedCallResolved } = useMissedCalls();
   const { notifications } = useNotifications();
+  const { unavailableDates, unavailableDriverIds } = useDriverAvailability();
   const { showToast } = useToast();
 
   const [currentMonth, setMonth]  = useState<Date>(new Date());
@@ -138,6 +140,11 @@ export default function Dashboard() {
     if (driverId) {
       const booking = bookings.find((b) => b.ref === ref);
       if (booking?.travel_date) {
+        if (unavailableDriverIds(booking.travel_date).has(driverId)) {
+          const driverName = drivers.find((d) => d.id === driverId)?.name ?? "This driver";
+          showToast(`${driverName} has marked ${booking.travel_date} as unavailable`, "warning");
+          return;
+        }
         const bookingMinutes = timeToMinutes(booking.travel_time);
         const clash = bookings.find((b) => {
           if (b.ref === ref) return false;
@@ -285,6 +292,7 @@ export default function Dashboard() {
                     bookings={dayBookings}
                     drivers={drivers}
                     notifications={notifications}
+                    unavailableDriverIds={unavailableDriverIds(format(selectedDate, "yyyy-MM-dd"))}
                     onStatusChange={handleStatusChange}
                     onDriverAssign={handleDriverAssign}
                   />
@@ -361,6 +369,9 @@ export default function Dashboard() {
                   const active    = bookings.filter((b) => b.driver_id === d.id && !["Completed", "Cancelled"].includes(b.status)).length;
                   const completed = bookings.filter((b) => b.driver_id === d.id && b.status === "Completed").length;
                   const revenue   = bookings.filter((b) => b.driver_id === d.id && b.status === "Completed").reduce((s, b) => s + (b.quoted_price ?? 0), 0);
+                  const today     = format(new Date(), "yyyy-MM-dd");
+                  const offToday  = unavailableDriverIds(today).has(d.id);
+                  const upcomingDaysOff = unavailableDates.filter((u) => u.driver_id === d.id && u.date >= today).length;
 
                   return (
                     <div key={d.id} className="rounded-2xl border border-white/8 bg-navy-800 px-4 py-4 shadow-card">
@@ -381,12 +392,22 @@ export default function Dashboard() {
                           }`}>
                             {d.status ?? "—"}
                           </span>
+                          {offToday && (
+                            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-red-900/40 text-red-400">
+                              Off today
+                            </span>
+                          )}
                           {active > 0 && <span className="text-xs text-gold font-medium">{active} active</span>}
                           {d.rating != null && (
                             <span className="text-xs text-slate-500">★ {d.rating.toFixed(1)}</span>
                           )}
                         </div>
                       </div>
+                      {upcomingDaysOff > 0 && (
+                        <p className="text-[10px] text-slate-500 mt-2">
+                          {upcomingDaysOff} upcoming day{upcomingDaysOff === 1 ? "" : "s"} off booked
+                        </p>
+                      )}
                       <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-white/5">
                         <div className="text-center">
                           <div className="text-sm font-bold text-slate-200">{completed}</div>
