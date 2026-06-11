@@ -6,6 +6,7 @@ import {
   Inbox,
   PhoneMissed,
   Phone,
+  Mail,
   MapPin,
   Plane,
   Calendar,
@@ -16,27 +17,33 @@ import {
   RotateCcw,
   ArrowLeftRight,
 } from "lucide-react";
-import type { DbQuoteRequest, DbMissedCall } from "@/lib/database.types";
+import type { DbQuoteRequest, DbMissedCall, DbContactMessage } from "@/lib/database.types";
 
 interface Props {
   quoteRequests: DbQuoteRequest[];
   missedCalls: DbMissedCall[];
+  contactMessages: DbContactMessage[];
   onDismissQuote: (id: string) => void;
   onConvertQuote: (quote: DbQuoteRequest) => void;
   onToggleMissedCall: (id: string, resolved: boolean) => void;
+  onToggleContactMessage: (id: string, read: boolean) => void;
 }
 
 export default function InboxTab({
   quoteRequests,
   missedCalls,
+  contactMessages,
   onDismissQuote,
   onConvertQuote,
   onToggleMissedCall,
+  onToggleContactMessage,
 }: Props) {
   const [showResolved, setShowResolved] = useState(false);
+  const [showRead, setShowRead] = useState(false);
 
   const newQuotes = quoteRequests.filter((q) => !q.status || q.status === "new");
   const visibleCalls = showResolved ? missedCalls : missedCalls.filter((c) => !c.resolved);
+  const visibleMessages = showRead ? contactMessages : contactMessages.filter((m) => m.status !== "read");
 
   return (
     <div className="space-y-5">
@@ -93,6 +100,37 @@ export default function InboxTab({
               key={call.id}
               call={call}
               onToggleResolved={() => onToggleMissedCall(call.id, !call.resolved)}
+            />
+          ))
+        )}
+      </section>
+
+      {/* Contact Messages */}
+      <section className="space-y-2">
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="text-lg font-bold text-slate-100 flex items-center gap-2">
+            <Mail size={16} className="text-gold/70" />
+            Messages
+          </h2>
+          <button
+            onClick={() => setShowRead((s) => !s)}
+            className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
+          >
+            {showRead ? "Hide read" : "Show read"}
+          </button>
+        </div>
+
+        {visibleMessages.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-8 rounded-2xl border border-dashed border-white/10 text-slate-600">
+            <Mail size={24} className="mb-2 text-slate-700" />
+            <p className="text-sm">{showRead ? "No messages" : "No new messages"}</p>
+          </div>
+        ) : (
+          visibleMessages.map((message) => (
+            <ContactMessageCard
+              key={message.id}
+              message={message}
+              onToggleRead={() => onToggleContactMessage(message.id, message.status !== "read")}
             />
           ))
         )}
@@ -251,6 +289,60 @@ function MissedCallCard({
         >
           {call.resolved ? <RotateCcw size={11} /> : <CheckCircle2 size={11} />}
           {call.resolved ? "Reopen" : "Resolve"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ContactMessageCard({
+  message,
+  onToggleRead,
+}: {
+  message: DbContactMessage;
+  onToggleRead: () => void;
+}) {
+  const isRead = message.status === "read";
+  const created = message.created_at
+    ? formatDistanceToNow(parseISO(message.created_at), { addSuffix: true })
+    : null;
+
+  return (
+    <div
+      className={`rounded-2xl border bg-navy-800 shadow-card overflow-hidden px-4 py-3 ${
+        isRead ? "border-white/8 opacity-60" : "border-blue-500/20"
+      }`}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between gap-2">
+            <p className="font-semibold text-slate-100 text-sm">{message.name}</p>
+            {created && <span className="text-[10px] text-slate-600 shrink-0 whitespace-nowrap">{created}</span>}
+          </div>
+          <div className="flex items-center gap-3 mt-1 flex-wrap">
+            {message.phone && (
+              <span className="flex items-center gap-1 text-xs text-slate-400">
+                <Phone size={11} className="text-gold/60" /> {message.phone}
+              </span>
+            )}
+            {message.email && (
+              <span className="flex items-center gap-1 text-xs text-slate-400">
+                <Mail size={11} className="text-gold/60" /> {message.email}
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-slate-400 italic mt-1.5 leading-relaxed">{message.message}</p>
+        </div>
+        <button
+          onClick={onToggleRead}
+          className={`shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all active:scale-[0.98] ${
+            isRead
+              ? "bg-navy-700 text-slate-400 border border-white/10 hover:bg-navy-600"
+              : "bg-blue-900/30 text-blue-300 border border-blue-500/25 hover:bg-blue-900/50"
+          }`}
+        >
+          {isRead ? <RotateCcw size={11} /> : <CheckCircle2 size={11} />}
+          {isRead ? "Reopen" : "Mark read"}
         </button>
       </div>
     </div>

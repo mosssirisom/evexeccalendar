@@ -4,11 +4,12 @@ import { useState, useMemo } from "react";
 import { format, parseISO, isSameDay, isSameMonth } from "date-fns";
 import { LayoutList, CalendarDays, Users, ExternalLink, Wifi, WifiOff, Inbox } from "lucide-react";
 import type { DbBooking, BookingStatus, DbQuoteRequest } from "@/lib/database.types";
-import { QUOTE_REQUEST_STATUS } from "@/lib/database.types";
+import { QUOTE_REQUEST_STATUS, CONTACT_MESSAGE_STATUS } from "@/lib/database.types";
 import { useBookings } from "@/hooks/useBookings";
 import { useDrivers } from "@/hooks/useDrivers";
 import { useQuoteRequests } from "@/hooks/useQuoteRequests";
 import { useMissedCalls } from "@/hooks/useMissedCalls";
+import { useContactMessages } from "@/hooks/useContactMessages";
 import { useNotifications } from "@/hooks/useNotifications";
 import { useDriverAvailability } from "@/hooks/useDriverAvailability";
 import { useToast } from "@/hooks/useToast";
@@ -78,6 +79,7 @@ export default function Dashboard() {
   const { drivers } = useDrivers();
   const { quoteRequests, setStatus: setQuoteStatus } = useQuoteRequests();
   const { missedCalls, setResolved: setMissedCallResolved } = useMissedCalls();
+  const { contactMessages, setStatus: setContactMessageStatus } = useContactMessages();
   const { notifications } = useNotifications();
   const { unavailableDates, unavailableDriverIds } = useDriverAvailability();
   const { showToast } = useToast();
@@ -88,12 +90,13 @@ export default function Dashboard() {
   const [showAddModal, setAdd]    = useState(false);
   const [quotePrefill, setQuotePrefill] = useState<{ prefill: BookingPrefill; quoteId: string } | null>(null);
 
-  // Badge count for the Inbox tab — new quote requests + unresolved missed calls
+  // Badge count for the Inbox tab — new quote requests + unresolved missed calls + unread messages
   const inboxCount = useMemo(() => {
     const newQuotes = quoteRequests.filter((q) => !q.status || q.status === "new").length;
     const unresolvedCalls = missedCalls.filter((c) => !c.resolved).length;
-    return newQuotes + unresolvedCalls;
-  }, [quoteRequests, missedCalls]);
+    const unreadMessages = contactMessages.filter((m) => m.status !== "read").length;
+    return newQuotes + unresolvedCalls + unreadMessages;
+  }, [quoteRequests, missedCalls, contactMessages]);
 
   // Bookings for the selected day
   const dayBookings = useMemo(() => {
@@ -203,6 +206,11 @@ export default function Dashboard() {
   const handleToggleMissedCall = async (id: string, resolved: boolean) => {
     const ok = await setMissedCallResolved(id, resolved);
     if (!ok) showToast("Couldn't update missed call — check connection and try again", "error");
+  };
+
+  const handleToggleContactMessage = async (id: string, read: boolean) => {
+    const ok = await setContactMessageStatus(id, read ? CONTACT_MESSAGE_STATUS.READ : CONTACT_MESSAGE_STATUS.NEW);
+    if (!ok) showToast("Couldn't update message — check connection and try again", "error");
   };
 
   return (
@@ -354,9 +362,11 @@ export default function Dashboard() {
               <InboxTab
                 quoteRequests={quoteRequests}
                 missedCalls={missedCalls}
+                contactMessages={contactMessages}
                 onDismissQuote={handleDismissQuote}
                 onConvertQuote={handleConvertQuote}
                 onToggleMissedCall={handleToggleMissedCall}
+                onToggleContactMessage={handleToggleContactMessage}
               />
             )}
 

@@ -90,6 +90,23 @@ export const QUOTE_REQUEST_STATUS = {
   DISMISSED: "dismissed",
 } as const;
 
+// "Contact us" form submissions from the public site — surfaced here as a
+// simple message inbox alongside quote requests and missed calls.
+export interface DbContactMessage {
+  id: string;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  message: string;
+  status: string | null; // "new" | "read"
+  created_at: string | null;
+}
+
+export const CONTACT_MESSAGE_STATUS = {
+  NEW: "new",
+  READ: "read",
+} as const;
+
 // Driver-reported leave/unavailability — set via the driver app, read here
 // for dispatch so unavailable drivers aren't assigned to a job that day.
 export interface DbDriverUnavailableDate {
@@ -151,6 +168,11 @@ export interface Database {
         Row: DbDriverUnavailableDate;
         Insert: Omit<DbDriverUnavailableDate, "id" | "created_at">;
         Update: Partial<DbDriverUnavailableDate>;
+      };
+      contact_messages: {
+        Row: DbContactMessage;
+        Insert: Omit<DbContactMessage, "id" | "created_at">;
+        Update: Partial<DbContactMessage>;
       };
     };
     Views: {
