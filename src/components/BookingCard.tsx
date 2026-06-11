@@ -1,20 +1,29 @@
 "use client";
 
 import { useState } from "react";
-import { Clock, MapPin, Users, Phone, ChevronDown, ChevronUp, MessageSquare, Plane, Star, AlertCircle } from "lucide-react";
+import { formatDistanceToNow, parseISO } from "date-fns";
+import { Clock, MapPin, Users, Phone, ChevronDown, ChevronUp, MessageSquare, Plane, Star, AlertCircle, Bell, AlertTriangle } from "lucide-react";
 import type { DbBooking, DbDriver, BookingStatus } from "@/lib/database.types";
 import { STATUS_NEXT_PRIMARY, STATUS_NEXT_LABEL } from "@/lib/database.types";
+import type { BookingNotificationStatus } from "@/hooks/useNotifications";
 import StatusBadge from "./StatusBadge";
 import DriverDropdown from "./DriverDropdown";
+
+const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
+  confirmation: "Confirmation",
+  reminder_24h: "24h reminder",
+  received: "Booking received",
+};
 
 interface Props {
   booking: DbBooking;
   drivers: DbDriver[];
+  notification?: BookingNotificationStatus;
   onStatusChange: (ref: string, status: BookingStatus) => void;
   onDriverAssign:  (ref: string, driverId: string | null) => void;
 }
 
-export default function BookingCard({ booking, drivers, onStatusChange, onDriverAssign }: Props) {
+export default function BookingCard({ booking, drivers, notification, onStatusChange, onDriverAssign }: Props) {
   const [expanded, setExpanded] = useState(false);
 
   const time      = booking.travel_time?.slice(0, 5) ?? "—";
@@ -37,6 +46,9 @@ export default function BookingCard({ booking, drivers, onStatusChange, onDriver
             <span className="flex items-center gap-0.5 text-[10px] font-bold text-amber-400 bg-amber-900/30 px-1.5 py-0.5 rounded-full">
               <Star size={8} fill="currentColor" /> Priority
             </span>
+          )}
+          {notification && notification.failedCount > 0 && (
+            <AlertTriangle size={12} className="text-red-400" aria-label="Notification failed to send" />
           )}
         </div>
         <StatusBadge status={booking.status} />
@@ -120,6 +132,27 @@ export default function BookingCard({ booking, drivers, onStatusChange, onDriver
             )}
             {booking.customer_email && (
               <DetailRow label="Email" value={booking.customer_email} />
+            )}
+            {notification?.lastSent && (
+              <div className="flex items-center gap-1.5">
+                <Bell size={11} className="text-gold/60 shrink-0" />
+                <span className="text-xs text-slate-400">
+                  {NOTIFICATION_TYPE_LABELS[notification.lastSent.type] ?? notification.lastSent.type} sent{" "}
+                  {formatDistanceToNow(parseISO(notification.lastSent.sent_at), { addSuffix: true })}
+                </span>
+              </div>
+            )}
+            {notification && notification.pendingCount > 0 && (
+              <div className="flex items-center gap-1.5 text-xs text-amber-300 bg-amber-900/20 px-3 py-1.5 rounded-lg">
+                <Bell size={11} />
+                {notification.pendingCount} notification{notification.pendingCount === 1 ? "" : "s"} pending
+              </div>
+            )}
+            {notification && notification.failedCount > 0 && (
+              <div className="flex items-center gap-1.5 text-xs text-red-300 bg-red-900/20 px-3 py-1.5 rounded-lg">
+                <AlertTriangle size={11} />
+                {notification.failedCount} notification{notification.failedCount === 1 ? "" : "s"} failed to send
+              </div>
             )}
           </div>
         )}

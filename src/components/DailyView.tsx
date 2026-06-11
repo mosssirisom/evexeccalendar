@@ -3,12 +3,14 @@
 import { format } from "date-fns";
 import { Calendar } from "lucide-react";
 import type { DbBooking, DbDriver, BookingStatus } from "@/lib/database.types";
+import type { BookingNotificationStatus } from "@/hooks/useNotifications";
 import BookingCard from "./BookingCard";
 
 interface Props {
   date: Date;
   bookings: DbBooking[];
   drivers: DbDriver[];
+  notifications: Record<string, BookingNotificationStatus>;
   onStatusChange: (ref: string, status: BookingStatus) => void;
   onDriverAssign: (ref: string, driverId: string | null) => void;
 }
@@ -17,6 +19,7 @@ export default function DailyView({
   date,
   bookings,
   drivers,
+  notifications,
   onStatusChange,
   onDriverAssign,
 }: Props) {
@@ -50,6 +53,7 @@ export default function DailyView({
             key={booking.ref}
             booking={booking}
             drivers={drivers}
+            notification={notifications[booking.id]}
             onStatusChange={onStatusChange}
             onDriverAssign={onDriverAssign}
           />

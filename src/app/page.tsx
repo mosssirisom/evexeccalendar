@@ -9,6 +9,7 @@ import { useBookings } from "@/hooks/useBookings";
 import { useDrivers } from "@/hooks/useDrivers";
 import { useQuoteRequests } from "@/hooks/useQuoteRequests";
 import { useMissedCalls } from "@/hooks/useMissedCalls";
+import { useNotifications } from "@/hooks/useNotifications";
 import { useToast } from "@/hooks/useToast";
 
 import Header from "@/components/Header";
@@ -76,6 +77,7 @@ export default function Dashboard() {
   const { drivers } = useDrivers();
   const { quoteRequests, setStatus: setQuoteStatus } = useQuoteRequests();
   const { missedCalls, setResolved: setMissedCallResolved } = useMissedCalls();
+  const { notifications } = useNotifications();
   const { showToast } = useToast();
 
   const [currentMonth, setMonth]  = useState<Date>(new Date());
@@ -282,6 +284,7 @@ export default function Dashboard() {
                     date={selectedDate}
                     bookings={dayBookings}
                     drivers={drivers}
+                    notifications={notifications}
                     onStatusChange={handleStatusChange}
                     onDriverAssign={handleDriverAssign}
                   />

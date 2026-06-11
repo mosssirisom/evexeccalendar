@@ -90,6 +90,30 @@ export const QUOTE_REQUEST_STATUS = {
   DISMISSED: "dismissed",
 } as const;
 
+// Read-only views exposing notification status without recipient PII or
+// message content — see migration dashboard_anon_notification_status_views.
+export interface DbNotificationLog {
+  id: number;
+  booking_id: string;
+  type: string;
+  channel: string;
+  sent_at: string | null;
+}
+
+export interface DbNotificationQueueItem {
+  id: string;
+  booking_id: string | null;
+  type: string | null;
+  channel: string;
+  status: string | null;
+  delivery_status: string | null;
+  attempts: number | null;
+  next_attempt_at: string | null;
+  sent_at: string | null;
+  created_at: string | null;
+  has_error: boolean;
+}
+
 // Supabase database shape for createClient<Database>
 export interface Database {
   public: {
@@ -115,7 +139,10 @@ export interface Database {
         Update: Partial<DbQuoteRequest>;
       };
     };
-    Views: Record<string, never>;
+    Views: {
+      notification_log_dashboard: { Row: DbNotificationLog };
+      notification_queue_dashboard: { Row: DbNotificationQueueItem };
+    };
     Functions: Record<string, never>;
     Enums: Record<string, never>;
   };
