@@ -140,6 +140,20 @@ export interface DbNotificationQueueItem {
   has_error: boolean;
 }
 
+// Operator activity feed — populated by a trigger on bookings that records
+// status, driver-assignment and payment-status changes (see migration
+// create_booking_audit_log). Read-only from the dashboard.
+export interface DbAuditLogEntry {
+  id: number;
+  booking_id: string;
+  booking_ref: string;
+  field: "status" | "driver" | "payment_status" | string;
+  old_value: string | null;
+  new_value: string | null;
+  changed_by_email: string | null;
+  created_at: string | null;
+}
+
 // Supabase database shape for createClient<Database>
 export interface Database {
   public: {
@@ -178,6 +192,7 @@ export interface Database {
     Views: {
       notification_log_dashboard: { Row: DbNotificationLog };
       notification_queue_dashboard: { Row: DbNotificationQueueItem };
+      booking_audit_log: { Row: DbAuditLogEntry };
     };
     Functions: Record<string, never>;
     Enums: Record<string, never>;

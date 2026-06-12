@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { format, parseISO, isSameDay, isSameMonth } from "date-fns";
-import { LayoutList, CalendarDays, Users, ExternalLink, Wifi, WifiOff, Inbox, Search, Download, X } from "lucide-react";
+import { LayoutList, CalendarDays, Users, ExternalLink, Wifi, WifiOff, Inbox, Search, Download, X, History } from "lucide-react";
 import type { DbBooking, BookingStatus, DbQuoteRequest } from "@/lib/database.types";
 import { QUOTE_REQUEST_STATUS, CONTACT_MESSAGE_STATUS, STATUS_TRANSITIONS } from "@/lib/database.types";
 import { useBookings } from "@/hooks/useBookings";
@@ -12,6 +12,7 @@ import { useMissedCalls } from "@/hooks/useMissedCalls";
 import { useContactMessages } from "@/hooks/useContactMessages";
 import { useNotifications } from "@/hooks/useNotifications";
 import { useDriverAvailability } from "@/hooks/useDriverAvailability";
+import { useAuditLog } from "@/hooks/useAuditLog";
 import { useToast } from "@/hooks/useToast";
 import { useAuth } from "@/hooks/useAuth";
 import { CLASH_BUFFER_MINUTES, timeToMinutes, quoteToPrefill } from "@/lib/bookingUtils";
@@ -24,9 +25,10 @@ import StatsBar from "@/components/StatsBar";
 import AddBookingModal, { type BookingPrefill } from "@/components/AddBookingModal";
 import StatusBadge from "@/components/StatusBadge";
 import InboxTab from "@/components/InboxTab";
+import AuditLogTab from "@/components/AuditLogTab";
 import LoginScreen from "@/components/LoginScreen";
 
-type Tab = "calendar" | "transfers" | "fleet" | "inbox";
+type Tab = "calendar" | "transfers" | "fleet" | "inbox" | "activity";
 
 const ALL_BOOKING_STATUSES = Object.keys(STATUS_TRANSITIONS) as BookingStatus[];
 
@@ -57,6 +59,7 @@ function Dashboard({ onSignOut }: { onSignOut: () => void }) {
   const { contactMessages, setStatus: setContactMessageStatus } = useContactMessages();
   const { notifications } = useNotifications();
   const { unavailableDates, unavailableDriverIds } = useDriverAvailability();
+  const { entries: auditLogEntries } = useAuditLog();
   const { showToast } = useToast();
 
   const [currentMonth, setMonth]  = useState<Date>(new Date());
@@ -226,19 +229,20 @@ function Dashboard({ onSignOut }: { onSignOut: () => void }) {
         </div>
 
         {/* Tab bar */}
-        <nav className="flex px-4 gap-1 py-2">
+        <nav className="flex overflow-x-auto px-4 gap-1 py-2">
           {(
             [
               { id: "calendar",  label: "Calendar",  icon: CalendarDays },
               { id: "transfers", label: "Transfers",  icon: LayoutList },
               { id: "inbox",     label: "Inbox",      icon: Inbox },
               { id: "fleet",     label: "Fleet",      icon: Users },
+              { id: "activity",  label: "Activity",   icon: History },
             ] as const
           ).map(({ id, label, icon: Icon }) => (
             <button
               key={id}
               onClick={() => setTab(id)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all shrink-0 ${
                 activeTab === id
                   ? "bg-gold/15 text-gold border border-gold/25"
                   : "text-slate-500 hover:text-slate-300"
@@ -404,6 +408,9 @@ function Dashboard({ onSignOut }: { onSignOut: () => void }) {
                 onToggleContactMessage={handleToggleContactMessage}
               />
             )}
+
+            {/* ── ACTIVITY TAB ── */}
+            {activeTab === "activity" && <AuditLogTab entries={auditLogEntries} />}
 
             {/* ── FLEET TAB ── */}
             {activeTab === "fleet" && (
