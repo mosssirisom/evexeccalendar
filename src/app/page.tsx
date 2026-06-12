@@ -2,9 +2,9 @@
 
 import { useState, useMemo } from "react";
 import { format, parseISO, isSameDay, isSameMonth } from "date-fns";
-import { LayoutList, CalendarDays, Users, ExternalLink, Wifi, WifiOff, Inbox } from "lucide-react";
+import { LayoutList, CalendarDays, Users, ExternalLink, Wifi, WifiOff, Inbox, Search, Download, X } from "lucide-react";
 import type { DbBooking, BookingStatus, DbQuoteRequest } from "@/lib/database.types";
-import { QUOTE_REQUEST_STATUS, CONTACT_MESSAGE_STATUS } from "@/lib/database.types";
+import { QUOTE_REQUEST_STATUS, CONTACT_MESSAGE_STATUS, STATUS_TRANSITIONS } from "@/lib/database.types";
 import { useBookings } from "@/hooks/useBookings";
 import { useDrivers } from "@/hooks/useDrivers";
 import { useQuoteRequests } from "@/hooks/useQuoteRequests";
@@ -14,6 +14,8 @@ import { useNotifications } from "@/hooks/useNotifications";
 import { useDriverAvailability } from "@/hooks/useDriverAvailability";
 import { useToast } from "@/hooks/useToast";
 import { useAuth } from "@/hooks/useAuth";
+import { CLASH_BUFFER_MINUTES, timeToMinutes, quoteToPrefill } from "@/lib/bookingUtils";
+import { bookingsToCsv, downloadCsv } from "@/lib/csv";
 
 import Header from "@/components/Header";
 import CalendarView from "@/components/CalendarView";
@@ -26,55 +28,7 @@ import LoginScreen from "@/components/LoginScreen";
 
 type Tab = "calendar" | "transfers" | "fleet" | "inbox";
 
-// Minimum gap required between two jobs assigned to the same driver on the
-// same day, to allow for drive time / handover between transfers.
-const CLASH_BUFFER_MINUTES = 90;
-
-function timeToMinutes(time: string | null): number | null {
-  if (!time) return null;
-  const [h, m] = time.split(":").map(Number);
-  if (Number.isNaN(h) || Number.isNaN(m)) return null;
-  return h * 60 + m;
-}
-
-// Maps a Booking Brain quote request onto the New Transfer form fields.
-// Anything without a direct field on the booking (passengers, luggage,
-// return trip, contact method) is folded into the notes for the operator
-// to review.
-function quoteToPrefill(quote: DbQuoteRequest): BookingPrefill {
-  const pickup = quote.airport ?? quote.pickup_location ?? undefined;
-
-  const noteParts: string[] = [];
-  if (quote.passengers) noteParts.push(`${quote.passengers} passenger${quote.passengers !== 1 ? "s" : ""}`);
-  if (quote.luggage) noteParts.push(`Luggage: ${quote.luggage}`);
-  if (quote.return_required) {
-    const parts = ["Return trip requested"];
-    if (quote.return_date) parts.push(`on ${quote.return_date}`);
-    if (quote.return_time) parts.push(`at ${quote.return_time.slice(0, 5)}`);
-    if (quote.return_pickup) parts.push(`from ${quote.return_pickup}`);
-    if (quote.return_destination) parts.push(`to ${quote.return_destination}`);
-    if (quote.return_airport) parts.push(`(airport: ${quote.return_airport})`);
-    if (quote.return_flight_number) parts.push(`flight ${quote.return_flight_number}`);
-    noteParts.push(parts.join(" "));
-  }
-  if (quote.contact_method) noteParts.push(`Contact via ${quote.contact_method}`);
-  if (quote.notes) noteParts.push(quote.notes);
-
-  const prefill: BookingPrefill = {
-    customer_name: quote.customer_name,
-    customer_phone: quote.phone,
-    direction: quote.airport ? "Airport → Destination" : "Point to Point",
-  };
-  if (quote.email) prefill.customer_email = quote.email;
-  if (quote.pickup_date) prefill.travel_date = quote.pickup_date;
-  if (quote.pickup_time) prefill.travel_time = quote.pickup_time.slice(0, 5);
-  if (pickup) prefill.airport = pickup;
-  if (quote.destination) prefill.dropoff_address = quote.destination;
-  if (quote.flight_number) prefill.flight_number = quote.flight_number;
-  if (noteParts.length) prefill.notes = noteParts.join(" · ");
-
-  return prefill;
-}
+const ALL_BOOKING_STATUSES = Object.keys(STATUS_TRANSITIONS) as BookingStatus[];
 
 export default function Page() {
   const { session, loading: authLoading, signIn, signOut } = useAuth();
@@ -110,6 +64,8 @@ function Dashboard({ onSignOut }: { onSignOut: () => void }) {
   const [activeTab, setTab]       = useState<Tab>("calendar");
   const [showAddModal, setAdd]    = useState(false);
   const [quotePrefill, setQuotePrefill] = useState<{ prefill: BookingPrefill; quoteId: string } | null>(null);
+  const [transferQuery, setTransferQuery] = useState("");
+  const [transferStatusFilter, setTransferStatusFilter] = useState<BookingStatus | "all">("all");
 
   // Badge count for the Inbox tab — new quote requests + unresolved missed calls + unread messages
   const inboxCount = useMemo(() => {
@@ -152,6 +108,20 @@ function Dashboard({ onSignOut }: { onSignOut: () => void }) {
         return da.localeCompare(db);
       });
   }, [bookings]);
+
+  // Upcoming bookings filtered by the Transfers tab's search and status filter
+  const filteredTransfers = useMemo(() => {
+    const q = transferQuery.trim().toLowerCase();
+    return upcomingBookings.filter((b) => {
+      if (transferStatusFilter !== "all" && b.status !== transferStatusFilter) return false;
+      if (!q) return true;
+      const haystack = [
+        b.ref, b.customer_name, b.customer_phone, b.customer_email,
+        b.airport, b.dropoff_address, b.flight_number, b.drivers?.name,
+      ].filter(Boolean).join(" ").toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [upcomingBookings, transferQuery, transferStatusFilter]);
 
   const handleStatusChange = async (ref: string, status: BookingStatus) => {
     const ok = await updateStatus(ref, status);
@@ -339,19 +309,63 @@ function Dashboard({ onSignOut }: { onSignOut: () => void }) {
 
             {/* ── TRANSFERS TAB ── */}
             {activeTab === "transfers" && (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between mb-2">
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
                   <h2 className="text-lg font-bold text-slate-100">Upcoming Transfers</h2>
-                  <span className="text-xs text-slate-500">{upcomingBookings.length} total</span>
+                  <span className="text-xs text-slate-500">{filteredTransfers.length} of {upcomingBookings.length}</span>
                 </div>
 
-                {upcomingBookings.length === 0 ? (
+                {/* Search, status filter & export */}
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-600" />
+                    <input
+                      type="text"
+                      value={transferQuery}
+                      onChange={(e) => setTransferQuery(e.target.value)}
+                      placeholder="Search name, phone, ref, flight…"
+                      className="w-full bg-navy-800 border border-white/8 rounded-xl pl-8 pr-8 py-2 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-gold/40 transition-colors"
+                    />
+                    {transferQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setTransferQuery("")}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
+                      >
+                        <X size={14} />
+                      </button>
+                    )}
+                  </div>
+                  <select
+                    value={transferStatusFilter}
+                    onChange={(e) => setTransferStatusFilter(e.target.value as BookingStatus | "all")}
+                    className="bg-navy-800 border border-white/8 rounded-xl px-2.5 py-2 text-xs text-slate-300 focus:outline-none focus:ring-1 focus:ring-gold/40 transition-colors shrink-0"
+                  >
+                    <option value="all">All statuses</option>
+                    {ALL_BOOKING_STATUSES.map((status) => (
+                      <option key={status} value={status}>{status}</option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => downloadCsv(`transfers-${format(new Date(), "yyyy-MM-dd")}.csv`, bookingsToCsv(filteredTransfers))}
+                    disabled={filteredTransfers.length === 0}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-white/8 bg-navy-800 text-xs font-semibold text-slate-300 hover:text-gold hover:border-gold/30 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0"
+                  >
+                    <Download size={13} />
+                    Export
+                  </button>
+                </div>
+
+                {filteredTransfers.length === 0 ? (
                   <div className="flex flex-col items-center py-12 text-slate-600">
                     <LayoutList size={32} className="mb-2 text-slate-700" />
-                    <p className="text-sm">No upcoming transfers</p>
+                    <p className="text-sm">
+                      {upcomingBookings.length === 0 ? "No upcoming transfers" : "No transfers match your search"}
+                    </p>
                   </div>
                 ) : (
-                  upcomingBookings.map((b) => (
+                  filteredTransfers.map((b) => (
                     <div key={b.ref} className="rounded-2xl border border-white/8 bg-navy-800 px-4 py-3 flex items-center gap-3 shadow-card">
                       <div className="text-center min-w-[44px]">
                         <div className="text-base font-bold text-slate-100">{b.travel_time?.slice(0, 5) ?? "—"}</div>
